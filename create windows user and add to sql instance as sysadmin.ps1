@@ -1,17 +1,29 @@
-﻿## userdefined varibles
+﻿## userdefined varibles 
+## backuppath must be accessible from sql server
 $PathToOlaHallengren = 'C:\pathto\ola hallengren MaintenanceSolution.sql'
-$BackupScriptLocation = "C:\pathto\ms-sql-db-backup-scheduled-job\sql backup assembly code output to transscript and variable.ps1"
+$BackupScriptLocation = "C:\pathto\sql backup assembly code output to transscript and variable.ps1"
 $backuppath = 'C:\pathto\backup'
-$sqlserver = 'somedomain\someinstance'
-$username = 'somedomain\someuser'
+$sqlserver = "$env:COMPUTERNAME\someinstance"
+$username = "$env:COMPUTERNAME\someuser"
+[int]$antalversionerafdatabasen = 3
+[int]$antalversioneraftrancescripts = 100 
 $dailyTrigger = New-JobTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -at "23:12"
 #$dailyTrigger = New-JobTrigger -Daily -At "15:45"    # angiv tidspunkt for kørsel
 
 ## end userdefined varibles
 
-$asbackuppath = '$backuppath = ' + "'$backuppath'"
+# below is done, to be able to define varibles, in the running backup
 $backupscript = Get-Content $BackupScriptLocation
-$backupscript[1] = $asbackuppath
+[int]$linenumber_backuppath = $backupscript | select-string -SimpleMatch '$backuppath' | Select-Object -First 1 -ExpandProperty linenumber
+[int]$linenumber_sqlserver = $backupscript | select-string -SimpleMatch '$sqlserver' | Select-Object -First 1 -ExpandProperty linenumber
+[int]$linenumber_antalversionerafdatabasen = $backupscript | select-string -SimpleMatch '[int]$antalversionerafdatabasen' | Select-Object -First 1 -ExpandProperty linenumber
+[int]$linenumber_antalversioneraftrancescripts = $backupscript | select-string -SimpleMatch '[int]$antalversioneraftrancescripts' | Select-Object -First 1 -ExpandProperty linenumber
+
+$backupscript[$linenumber_backuppath ] = '$backuppath = ' + "'$backuppath'"
+$backupscript[$linenumber_sqlserver] = '$sqlserver = ' + "'$sqlserver'"
+$backupscript[$linenumber_antalversionerafdatabasen] = '[int]$antalversionerafdatabasen = ' + "$antalversionerafdatabasen"
+$backupscript[$linenumber_antalversioneraftrancescripts] = '[int]$antalversioneraftrancescripts = ' + "$antalversioneraftrancescripts"
+
 $backupscript | Out-File $BackupScriptLocation
 
 function Get-WpfUserInput {
@@ -92,17 +104,17 @@ function Get-WpfUserInput {
         $appContext = New-Object System.Windows.Forms.ApplicationContext
         [System.Windows.Forms.Application]::Run($appContext)
     
-        $UserName = "sa"
+        $UserName = "somedummyusernotusedcantbeblank"
         $top = New-Object System.Management.Automation.PSCredential `
             -ArgumentList $UserName, $Txt_ConnectDialog_Input.SecurePassword
     
-        $UserName = "sa"
+        $UserName = "somedummyusernotusedcantbeblank"
         $bottom = New-Object System.Management.Automation.PSCredential `
             -ArgumentList $UserName, $Txt_ConnectDialog_Input_control.SecurePassword
         $i++
     }
     while (($top.GetNetworkCredential().Password) -cne ($bottom.GetNetworkCredential().Password))
-    Write-Output $output
+    Write-Output $top
 }
 function Get-UserFromWellKnownSidType {
     [CmdletBinding()]
@@ -393,12 +405,14 @@ function Invoke-SqlSelect {
 
 $windowsuserpassword = Get-WpfUserInput -Message 'Enter password for windows user'
 
-$usercred = New-Object System.Management.Automation.PSCredential `
-    -ArgumentList $UserName, $windowsuserpassword
+if ((($windowsuserpassword.GetNetworkCredential().password).length) -eq 0) {break}
 
-#$usercred = Get-Credential -UserName "$env:COMPUTERNAME\$username" -Message 'tast kode til visma brugeren der bliver oprettet til backup'     
+$usercred = New-Object System.Management.Automation.PSCredential `
+    -ArgumentList $UserName, $windowsuserpassword.password
 
 $userinput = Get-WpfUserInput -Message 'Enter Password for sa'
+
+if ((($userinput.GetNetworkCredential().password).length) -eq 0) {break}
 
 Invoke-Sqlcmd -InputFile $PathToOlaHallengren -ServerInstance $sqlserver -Username 'sa' -Password $($BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($userinput); [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR))
 
