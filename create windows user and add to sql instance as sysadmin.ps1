@@ -1,13 +1,20 @@
-﻿
-$PathToOlaHallengren = 'C:\Visma\ola hallengren MaintenanceSolution.sql'
-$BackupScriptLocation = "C:\visma1\sql backup assembly code output to transscript and variable.ps1"
-## remember to change backup location in $BackupScriptLocation ps1 file
+﻿## userdefined varibles
+$PathToOlaHallengren = 'C:\pathto\ola hallengren MaintenanceSolution.sql'
+$BackupScriptLocation = "C:\pathto\ms-sql-db-backup-scheduled-job\sql backup assembly code output to transscript and variable.ps1"
+$backuppath = 'C:\pathto\backup'
 $sqlserver = 'somedomain\someinstance'
 $username = 'somedomain\someuser'
 $dailyTrigger = New-JobTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -at "23:12"
 #$dailyTrigger = New-JobTrigger -Daily -At "15:45"    # angiv tidspunkt for kørsel
 
-function Get-WpfUserIndput {
+## end userdefined varibles
+
+$asbackuppath = '$backuppath = ' + "'$backuppath'"
+$backupscript = Get-Content $BackupScriptLocation
+$backupscript[1] = $asbackuppath
+$backupscript | Out-File $BackupScriptLocation
+
+function Get-WpfUserInput {
     
     [CmdletBinding()]
     Param
