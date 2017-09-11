@@ -1,7 +1,9 @@
 ﻿
 $PathToOlaHallengren = 'C:\Visma\ola hallengren MaintenanceSolution.sql'
 $BackupScriptLocation = "C:\visma1\sql backup assembly code output to transscript and variable.ps1"
-$username = 'someuser'
+## remember to change backup location in $BackupScriptLocation ps1 file
+$sqlserver = 'somedomain\someinstance'
+$username = 'somedomain\someuser'
 $dailyTrigger = New-JobTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -at "23:12"
 #$dailyTrigger = New-JobTrigger -Daily -At "15:45"    # angiv tidspunkt for kørsel
 
@@ -400,7 +402,7 @@ $admingroup = ($administrator.user).TrimStart('BUILTIN\\')
 #[securestring]$password = Read-Host -AsSecureString
 
 try {
-    New-LocalUser -AccountNeverExpires -Name visma -Description 'Bruges af visma til sql backup' -PasswordNeverExpires -Password ($a.Password)
+    New-LocalUser -AccountNeverExpires -Name visma -Description 'Bruges af visma til sql backup' -PasswordNeverExpires -Password ($usercred.Password)
 }
 catch [System.Management.Automation.CommandNotFoundException] {
     Write-Verbose "new-localuser is not supported running NET USER instead"
@@ -412,7 +414,7 @@ catch [System.Management.Automation.CommandNotFoundException] {
 
 
 try {
-    Add-LocalGroupMember -Group "$admingroup" -Member "$a.UserName" 
+    Add-LocalGroupMember -Group "$admingroup" -Member "$usercred.UserName" 
 }
 catch [System.Management.Automation.CommandNotFoundException] {
     Write-Verbose "Add-LocalGroupMember is not supported running NET LOCALGROUP instead" 
@@ -431,7 +433,7 @@ Register-ScheduledJob -Name databasebackup -FilePath $BackupScriptLocation -Trig
 
 <#
 Register-ScheduledJob 
-(Get-ScheduledJob -Name dbbackup).Run()
+(Get-ScheduledJob -Name databasebackup).Run()
 #>
 
 $domainuser = $usercred.UserName
@@ -461,7 +463,7 @@ SELECT
 SERVERPROPERTY('ProductVersion') AS ProductVersion;
 "@
 
-$res = Invoke-SqlSelect -SqlServer '.\winkompas2012' -Database 'master' -SqlStatement $querysqlversion 
+$res = Invoke-SqlSelect -SqlServer $sqlserver -Database 'master' -SqlStatement $querysqlversion 
 
 [int]$SqlVersionMajor = ($res.ProductVersion).Substring('0', '2')
 
@@ -486,7 +488,7 @@ JOIN sys.server_principals AS member
 ON sys.server_role_members.member_principal_id = member.principal_id;  
 "@
 
-$ResSqlSysadmin = Invoke-SqlSelect -SqlServer '.\winkompas2012' -Database 'master' -SqlStatement $SqlSysadminQuery 
+$ResSqlSysadmin = Invoke-SqlSelect -SqlServer $sqlserver -Database 'master' -SqlStatement $SqlSysadminQuery 
 
 if ($ResSqlSysadmin.MemberName -ccontains $domainuser) {
     Write-Verbose "{$domainuser} is added to sysadmins"
