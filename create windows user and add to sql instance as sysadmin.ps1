@@ -12,16 +12,20 @@ $dailyTrigger = New-JobTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, T
 
 ## end userdefined varibles
 
+$instance = $sqlserver -replace '^[^\\]*\\',''
+
 # below is done, to be able to define varibles, in the running backup
 $backupscript = Get-Content $BackupScriptLocation
 [int]$linenumber_backuppath = $backupscript | select-string -SimpleMatch '$backuppath' | Select-Object -First 1 -ExpandProperty linenumber
 [int]$linenumber_sqlserver = $backupscript | select-string -SimpleMatch '$sqlserver' | Select-Object -First 1 -ExpandProperty linenumber
+[int]$linenumber_instance = $backupscript | select-string -SimpleMatch '$instance' | Select-Object -First 1 -ExpandProperty linenumber
 [int]$linenumber_antalversionerafdatabasen = $backupscript | select-string -SimpleMatch '[int]$antalversionerafdatabasen' | Select-Object -First 1 -ExpandProperty linenumber
 [int]$linenumber_antalversioneraftrancescripts = $backupscript | select-string -SimpleMatch '[int]$antalversioneraftrancescripts' | Select-Object -First 1 -ExpandProperty linenumber
 
 ## -1 is to offset mismatch between linenumber and index number
 $backupscript[$linenumber_backuppath-1] = '$backuppath = ' + "'$backuppath'"
 $backupscript[$linenumber_sqlserver-1] = '$sqlserver = ' + "'$sqlserver'"
+$backupscript[$linenumber_instance-1] = '$instance = ' + "'$instance'"
 $backupscript[$linenumber_antalversionerafdatabasen-1] = '[int]$antalversionerafdatabasen = ' + "$antalversionerafdatabasen"
 $backupscript[$linenumber_antalversioneraftrancescripts-1] = '[int]$antalversioneraftrancescripts = ' + "$antalversioneraftrancescripts"
 $backupscriptname = (Get-ChildItem $BackupScriptLocation).name
