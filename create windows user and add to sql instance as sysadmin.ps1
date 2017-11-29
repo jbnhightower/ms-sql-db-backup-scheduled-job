@@ -1,10 +1,10 @@
 ﻿## userdefined varibles 
 ## backuppath must be accessible from sql server
-$PathToOlaHallengren = 'C:\pathto\ola hallengren MaintenanceSolution.sql'
-$BackupScriptLocation = "C:\pathto\sql backup assembly code output to transscript and variable.ps1"
-$backuppath = 'C:\pathto\backup'
-$sqlserver = "$env:COMPUTERNAME\someinstance"
-$username = "$env:COMPUTERNAME\someuser"
+$PathToOlaHallengren = 'C:\path\ms-sql-db-backup-scheduled-job\ola hallengren MaintenanceSolution.sql'
+$BackupScriptLocation = "C:\path\ms-sql-db-backup-scheduled-job\sql backup assembly code output to transscript and variable.ps1"
+$backuppath = 'C:\path\backup'
+$sqlserver = "$env:COMPUTERNAME\instancename"
+$username = "$env:COMPUTERNAME\username"
 [int]$antalversionerafdatabasen = 3
 [int]$antalversioneraftrancescripts = 100 
 $dailyTrigger = New-JobTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -at "23:12"
@@ -19,12 +19,15 @@ $backupscript = Get-Content $BackupScriptLocation
 [int]$linenumber_antalversionerafdatabasen = $backupscript | select-string -SimpleMatch '[int]$antalversionerafdatabasen' | Select-Object -First 1 -ExpandProperty linenumber
 [int]$linenumber_antalversioneraftrancescripts = $backupscript | select-string -SimpleMatch '[int]$antalversioneraftrancescripts' | Select-Object -First 1 -ExpandProperty linenumber
 
-$backupscript[$linenumber_backuppath ] = '$backuppath = ' + "'$backuppath'"
-$backupscript[$linenumber_sqlserver] = '$sqlserver = ' + "'$sqlserver'"
-$backupscript[$linenumber_antalversionerafdatabasen] = '[int]$antalversionerafdatabasen = ' + "$antalversionerafdatabasen"
-$backupscript[$linenumber_antalversioneraftrancescripts] = '[int]$antalversioneraftrancescripts = ' + "$antalversioneraftrancescripts"
+## -1 is to offset mismatch between linenumber and index number
+$backupscript[$linenumber_backuppath-1] = '$backuppath = ' + "'$backuppath'"
+$backupscript[$linenumber_sqlserver-1] = '$sqlserver = ' + "'$sqlserver'"
+$backupscript[$linenumber_antalversionerafdatabasen-1] = '[int]$antalversionerafdatabasen = ' + "$antalversionerafdatabasen"
+$backupscript[$linenumber_antalversioneraftrancescripts-1] = '[int]$antalversioneraftrancescripts = ' + "$antalversioneraftrancescripts"
+$backupscriptname = (Get-ChildItem $BackupScriptLocation).name
+$backuppathtrim = $backuppath.TrimEnd('\')
 
-$backupscript | Out-File $BackupScriptLocation
+$backupscript | Out-File "$backuppathtrim\$backupscriptname"
 
 function Get-WpfUserInput {
     
@@ -420,10 +423,13 @@ $administrator = Get-UserFromWellKnownSidType -WellKnownSidType BuiltinAdministr
 
 $admingroup = ($administrator.user).TrimStart('BUILTIN\\')
 
+$usernameclean = $usercred.UserName -replace '^[^\\]*\\',''
+
 #[securestring]$password = Read-Host -AsSecureString
 
+
 try {
-    New-LocalUser -AccountNeverExpires -Name visma -Description 'Bruges af visma til sql backup' -PasswordNeverExpires -Password ($usercred.Password)
+    New-LocalUser -AccountNeverExpires -Name $usernameclean -Description 'Bruges til sql backup' -PasswordNeverExpires -Password ($usercred.Password)
 }
 catch [System.Management.Automation.CommandNotFoundException] {
     Write-Verbose "new-localuser is not supported running NET USER instead"
@@ -435,7 +441,7 @@ catch [System.Management.Automation.CommandNotFoundException] {
 
 
 try {
-    Add-LocalGroupMember -Group "$admingroup" -Member "$usercred.UserName" 
+    Add-LocalGroupMember -Group "$admingroup" -Member $usernameclean 
 }
 catch [System.Management.Automation.CommandNotFoundException] {
     Write-Verbose "Add-LocalGroupMember is not supported running NET LOCALGROUP instead" 
@@ -450,7 +456,7 @@ $group
 
 $option = New-ScheduledJobOption -StartIfOnBattery
 
-Register-ScheduledJob -Name databasebackup -FilePath $BackupScriptLocation -Trigger $dailyTrigger -ScheduledJobOption $option -Credential $usercred
+Register-ScheduledJob -Name databasebackup -FilePath "$backuppathtrim\$backupscriptname" -Trigger $dailyTrigger -ScheduledJobOption $option -Credential $usercred
 
 <#
 Register-ScheduledJob 
