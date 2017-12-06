@@ -1,7 +1,7 @@
 ﻿## userdefined varibles 
 ## backuppath must be accessible from sql server
-$PathToOlaHallengrenFolder = 'C:\comteam\ms-sql-db-backup-scheduled-job'
-$BackupScriptLocationFolder = "C:\comteam\ms-sql-db-backup-scheduled-job"
+$PathToOlaHallengrenFolder = 'C:\folder\ms-sql-db-backup-scheduled-job'
+$BackupScriptLocationFolder = "C:\folder\ms-sql-db-backup-scheduled-job"
 $backuppath = 'C:\pathto\backup'
 $sqlserver = "$env:COMPUTERNAME"
 $username = "$env:COMPUTERNAME\someuser"
