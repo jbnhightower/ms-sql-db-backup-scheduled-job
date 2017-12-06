@@ -1,18 +1,24 @@
 ﻿## userdefined varibles 
 ## backuppath must be accessible from sql server
-$PathToOlaHallengren = 'C:\path\ms-sql-db-backup-scheduled-job\ola hallengren MaintenanceSolution.sql'
-$BackupScriptLocation = "C:\path\ms-sql-db-backup-scheduled-job\sql backup assembly code output to transscript and variable.ps1"
-$backuppath = 'C:\path\backup'
-$sqlserver = "$env:COMPUTERNAME\instancename"
-$username = "$env:COMPUTERNAME\username"
+$PathToOlaHallengrenFolder = 'C:\comteam\ms-sql-db-backup-scheduled-job'
+$BackupScriptLocationFolder = "C:\comteam\ms-sql-db-backup-scheduled-job"
+$backuppath = 'C:\pathto\backup'
+$sqlserver = "$env:COMPUTERNAME"
+$username = "$env:COMPUTERNAME\someuser"
+$BackupJobName = "backupdefaultinstance"
 [int]$antalversionerafdatabasen = 3
 [int]$antalversioneraftrancescripts = 100 
-$dailyTrigger = New-JobTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -at "23:12"
+$dailyTrigger = New-JobTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -at "22:00"
 #$dailyTrigger = New-JobTrigger -Daily -At "15:45"    # angiv tidspunkt for kørsel
 
 ## end userdefined varibles
 
 $instance = $sqlserver -replace '^[^\\]*\\',''
+
+$PathToOlaHallengrenFolderclean = $PathToOlaHallengrenFolder.TrimEnd('\\')
+$BackupScriptLocationFolderclean = $BackupScriptLocationFolder.TrimEnd('\\')
+$PathToOlaHallengren = "$PathToOlaHallengrenFolderclean"+'\ola hallengren MaintenanceSolution.sql'
+$BackupScriptLocation = "$BackupScriptLocationFolderclean"+'\sql backup assembly code output to transscript and variable.ps1'
 
 # below is done, to be able to define varibles, in the running backup
 $backupscript = Get-Content $BackupScriptLocation
@@ -31,7 +37,8 @@ $backupscript[$linenumber_antalversioneraftrancescripts-1] = '[int]$antalversion
 $backupscriptname = (Get-ChildItem $BackupScriptLocation).name
 $backuppathtrim = $backuppath.TrimEnd('\')
 
-$backupscript | Out-File "$backuppathtrim\$backupscriptname"
+$backupscript | Out-File "$backuppathtrim\$instance$backupscriptname"
+$BackupScriptuserSpecifikFullname = "$backuppathtrim\$instance$backupscriptname"
 
 function Get-WpfUserInput {
     
@@ -410,7 +417,7 @@ function Invoke-SqlSelect {
     }
 }
 
-$windowsuserpassword = Get-WpfUserInput -Message 'Enter password for windows user'
+$windowsuserpassword = Get-WpfUserInput -Message 'Enter password for windows user' 
 
 if ((($windowsuserpassword.GetNetworkCredential().password).length) -eq 0) {break}
 
@@ -421,7 +428,7 @@ $userinput = Get-WpfUserInput -Message 'Enter Password for sa'
 
 if ((($userinput.GetNetworkCredential().password).length) -eq 0) {break}
 
-Invoke-Sqlcmd -InputFile $PathToOlaHallengren -ServerInstance $sqlserver -Username 'sa' -Password $($BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($userinput); [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR))
+Invoke-Sqlcmd -InputFile $PathToOlaHallengren -ServerInstance $sqlserver -Username 'sa' -Password $($BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($userinput.Password); [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR))
 
 $administrator = Get-UserFromWellKnownSidType -WellKnownSidType BuiltinAdministratorsSid 
 
@@ -431,28 +438,40 @@ $usernameclean = $usercred.UserName -replace '^[^\\]*\\',''
 
 #[securestring]$password = Read-Host -AsSecureString
 
-
 try {
-    New-LocalUser -AccountNeverExpires -Name $usernameclean -Description 'Bruges til sql backup' -PasswordNeverExpires -Password ($usercred.Password)
+    $usersnametaken = (Get-LocalUser -Name $usernameclean -ErrorAction Stop).enabled 
 }
-catch [System.Management.Automation.CommandNotFoundException] {
-    Write-Verbose "new-localuser is not supported running NET USER instead"
+catch [Microsoft.PowerShell.Commands.UserNotFoundException] {
+    $usersnametaken = $false
+ 
+}
+finally {
+    Write-Output $usersnametaken | Out-Null
+}
+
+
+if ($usersnametaken -ne $true) {
     
-    [string]$string = $($BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($usercred.Password); [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)) 
+    try {
+        New-LocalUser -AccountNeverExpires -Name $usernameclean -Description 'Bruges til sql backup' -PasswordNeverExpires -Password ($usercred.Password)
+    }
+    catch [System.Management.Automation.CommandNotFoundException] {
+        Write-Verbose "new-localuser is not supported running NET USER instead" -Verbose
+    
+        [string]$string = $($BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($usercred.Password); [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)) 
 
-    NET USER $username "$string" /ADD
+        NET USER $username "$string" /ADD
+    }
+
+    try {
+        Add-LocalGroupMember -Group "$admingroup" -Member $usernameclean 
+    }
+    catch [System.Management.Automation.CommandNotFoundException] {
+        Write-Verbose "Add-LocalGroupMember is not supported running NET LOCALGROUP instead" -Verbose
+
+        NET LOCALGROUP "$admingroup" "$username" /ADD
+    }
 }
-
-
-try {
-    Add-LocalGroupMember -Group "$admingroup" -Member $usernameclean 
-}
-catch [System.Management.Automation.CommandNotFoundException] {
-    Write-Verbose "Add-LocalGroupMember is not supported running NET LOCALGROUP instead" 
-
-    NET LOCALGROUP "$admingroup" "$username" /ADD
-}
-
 <#
 $group = [ADSI]"WinNT://gamer/visma,group"
 $group
@@ -460,11 +479,18 @@ $group
 
 $option = New-ScheduledJobOption -StartIfOnBattery
 
-Register-ScheduledJob -Name databasebackup -FilePath "$backuppathtrim\$backupscriptname" -Trigger $dailyTrigger -ScheduledJobOption $option -Credential $usercred
+Register-ScheduledJob -Name $BackupJobName -FilePath "$BackupScriptuserSpecifikFullname" -Trigger $dailyTrigger -ScheduledJobOption $option -Credential $usercred
 
 <#
-Register-ScheduledJob 
-(Get-ScheduledJob -Name databasebackup).Run()
+
+Get-ScheduledJob -Name $BackupJobName).Run()
+
+$dailyTrigger = New-JobTrigger -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday -at "23:00"
+
+Get-ScheduledJob -Name $BackupJobName | Set-ScheduledJob -Trigger  $dailyTrigger
+
+(Get-ScheduledJob -Name $BackupJobName).jobtriggers
+
 #>
 
 $domainuser = $usercred.UserName
@@ -522,7 +548,7 @@ ON sys.server_role_members.member_principal_id = member.principal_id;
 $ResSqlSysadmin = Invoke-SqlSelect -SqlServer $sqlserver -Database 'master' -SqlStatement $SqlSysadminQuery 
 
 if ($ResSqlSysadmin.MemberName -ccontains $domainuser) {
-    Write-Verbose "{$domainuser} is added to sysadmins"
+    Write-Verbose "{$domainuser} is added to sysadmins" -Verbose
 }
 else {
     Write-warning "{$domainuser} is NOT added to sysadmins"
